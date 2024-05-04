@@ -7,7 +7,7 @@
 #include "mm.h"
 #include <stdlib.h>
 #include <stdio.h>
-
+#include <pthread.h>
 /* 
  * init_pte - Initialize PTE entry
  */
@@ -88,6 +88,7 @@ int vmap_page_range(struct pcb_t *caller, // process call
    *      [addr to addr + pgnum*PAGING_PAGESZ
    *      in page table caller->mm->pgd[]
    */
+    
     if(swap == 0){
      uint32_t * pte = malloc(sizeof(uint32_t));
      int pgn = PAGING_PGN(addr);
@@ -101,7 +102,7 @@ int vmap_page_range(struct pcb_t *caller, // process call
      caller->mm->pgd[pgn] = *pte;
      enlist_pgn_node(&caller->mm->fifo_pgn, pgn);
     }
-     
+    
    /* Tracking for later page replacement activities (if needed)
     * Enqueue new usage page */
   
@@ -333,21 +334,21 @@ int print_list_fp(struct framephy_struct *ifp)
    return 0;
 }
 
-// int print_list_rg(struct vm_rg_struct *irg)
-// {
-//    struct vm_rg_struct *rg = irg;
+int print_list_rg(struct vm_rg_struct *irg)
+{
+   struct vm_rg_struct *rg = irg;
  
-//    printf("print_list_rg: ");
-//    if (rg == NULL) {printf("NULL list\n"); return -1;}
-//    printf("\n");
-//    while (rg != NULL)
-//    {
-//        printf("rg[%ld->%ld]\n",rg->rg_start, rg->rg_end);
-//        rg = rg->rg_next;
-//    }
-//    printf("\n");
-//    return 0;
-// }
+   printf("print_list_rg: ");
+   if (rg == NULL) {printf("NULL list\n"); return -1;}
+   printf("\n");
+   while (rg != NULL)
+   {
+       printf("rg[%ld->%ld]\n",rg->rg_start, rg->rg_end);
+       rg = rg->rg_next;
+   }
+   printf("\n");
+   return 0;
+}
 
 int print_list_vma(struct vm_area_struct *ivma)
 {

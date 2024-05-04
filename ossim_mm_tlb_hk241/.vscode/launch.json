@@ -9,7 +9,7 @@
       "type": "cppdbg",
       "request": "launch",
       "program": "/home/khoanguyen/OperatingSystem_Assignment/ossim_mm_tlb_hk241/os",
-      "args": ["os_0_paging"],
+      "args": ["os_1_mlq_paging_small_1K"],
       "stopAtEntry": false,
       "cwd": "/home/khoanguyen/OperatingSystem_Assignment/ossim_mm_tlb_hk241",
       "environment": [],

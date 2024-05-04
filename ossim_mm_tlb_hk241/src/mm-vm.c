@@ -24,10 +24,8 @@ int enlist_vm_freerg_list(struct mm_struct *mm, struct vm_rg_struct * rg_elmt)
   rgnode->next = NULL;
   if (rg_elmt->rg_start >= rg_elmt->rg_end)
     return -1;
-     pthread_mutex_lock(&freelist_lock);
      rgnode->next = *free_list;
      *free_list = rgnode; 
-     pthread_mutex_unlock(&freelist_lock);
   /* Enlist the new region */
   return 0;
 }
@@ -288,6 +286,10 @@ int __read(struct pcb_t *caller, int vmaid, int rgid, int offset, BYTE *data)
 
   if(currg == NULL || cur_vma == NULL) /* Invalid memory identify */
 	  return -1;
+  if(currg->rg_start == currg->rg_end){
+     printf("Segmentation Fault !!\n");
+     return -1;
+  }
   if(currg->rg_start + offset >= currg->rg_start + currg->rg_end){
     printf("Out-of-bounds memory access\n");
     return -1;
@@ -343,6 +345,10 @@ int __write(struct pcb_t *caller, int vmaid, int rgid, int offset, BYTE value)
   
   if(currg == NULL || cur_vma == NULL) /* Invalid memory identify */
 	  return -1;
+  if(currg->rg_start == currg->rg_end){
+     printf("Segmentation Fault !!\n");
+     return -1;
+  }
   if(currg->rg_start + offset >= currg->rg_start + currg->rg_end){
     printf("Out-of-bounds memory access\n");
     return -1;
@@ -521,7 +527,6 @@ int get_free_vmrg_area(struct pcb_t *caller, int vmaid, int size, struct vm_rg_s
 
   /* Probe unintialized newrg */
   newrg->rg_start = newrg->rg_end = -1;
-
   /* Traverse on list of free vm region to find a fit space */
   while (rgit != NULL)
   {

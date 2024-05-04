@@ -76,6 +76,12 @@ static void * cpu_routine(void * args) {
 				id, proc->pid);
 			put_proc(proc);
 			proc = get_proc();
+		}else if(proc->pc == -1){
+			printf("\tCPU %d: Processed %2d has stopped\n",
+				id ,proc->pid);
+			free(proc);
+			proc = get_proc();
+			time_left = 0;
 		}
 		
 		/* Recheck process status after loading new process */
@@ -95,12 +101,12 @@ static void * cpu_routine(void * args) {
 		}
 		
 		/* Run current process */
-		if (run(proc) == -1){
-			detach_event(timer_id);
-			pthread_exit(NULL);
-		}
-		time_left--;
-		next_slot(timer_id);
+			if(run(proc) == 0){
+				time_left--;
+				next_slot(timer_id);
+			}else{
+				proc->pc = -1;
+			}
 	}
 	detach_event(timer_id);
 	pthread_exit(NULL);
