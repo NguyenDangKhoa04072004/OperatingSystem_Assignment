@@ -19,7 +19,6 @@ int init_pte(uint32_t *pte,
              int swptyp, // swap type
              int swpoff) //swap offset
 {
-  if (pre != 0) {
     if (swp == 0) { // Non swap ~ page online
       // if (fpn == 0) 
       //   return -1; // Invalid setting
@@ -28,17 +27,14 @@ int init_pte(uint32_t *pte,
       SETBIT(*pte, PAGING_PTE_PRESENT_MASK);
       CLRBIT(*pte, PAGING_PTE_SWAPPED_MASK);
       CLRBIT(*pte, PAGING_PTE_DIRTY_MASK);
-
       SETVAL(*pte, fpn, PAGING_PTE_FPN_MASK, PAGING_PTE_FPN_LOBIT); 
     } else { // page swapped
-      SETBIT(*pte, PAGING_PTE_PRESENT_MASK);
+      CLRBIT(*pte, PAGING_PTE_PRESENT_MASK);
       SETBIT(*pte, PAGING_PTE_SWAPPED_MASK);
       CLRBIT(*pte, PAGING_PTE_DIRTY_MASK);
-
       SETVAL(*pte, swptyp, PAGING_PTE_SWPTYP_MASK, PAGING_PTE_SWPTYP_LOBIT); 
       SETVAL(*pte, swpoff, PAGING_PTE_SWPOFF_MASK, PAGING_PTE_SWPOFF_LOBIT);
     }
-  }
 
   return 0;   
 }
@@ -69,7 +65,6 @@ int pte_set_fpn(uint32_t *pte, int fpn)
 {
   SETBIT(*pte, PAGING_PTE_PRESENT_MASK);
   CLRBIT(*pte, PAGING_PTE_SWAPPED_MASK);
-
   SETVAL(*pte, fpn, PAGING_PTE_FPN_MASK, PAGING_PTE_FPN_LOBIT); 
 
   return 0;
@@ -82,26 +77,31 @@ int pte_set_fpn(uint32_t *pte, int fpn)
 int vmap_page_range(struct pcb_t *caller, // process call
                                 int addr, // start address which is aligned to pagesz
                                int pgnum, // num of mapping page
+                               int swap,
            struct framephy_struct *frames,// list of the mapped frames
               struct vm_rg_struct *ret_rg)// return mapped region, the real mapped fp
 {                                         // no guarantee all given pages are mapped
-  struct framephy_struct *fpit = malloc(sizeof(struct framephy_struct));
   //int  fpn;
-  int pgit;
   ret_rg->rg_end = ret_rg->rg_start = addr; // at least the very first space is usable
 
   /* TODO map range of frame to address space 
    *      [addr to addr + pgnum*PAGING_PAGESZ
    *      in page table caller->mm->pgd[]
    */
-  for(fpit = frames, pgit = 0; fpit != NULL && pgit < pgnum; fpit=fpit->fp_next, pgit++){
+    if(swap == 0){
      uint32_t * pte = malloc(sizeof(uint32_t));
      int pgn = PAGING_PGN(addr);
-     init_pte(pte,1,fpit->fpn,0,0,0,0);
+     init_pte(pte,1,frames->fpn,0,0,0,0);
      caller->mm->pgd[pgn] = *pte;
-     addr = addr + PAGING_PAGESZ;
      enlist_pgn_node(&caller->mm->fifo_pgn, pgn);
-  }
+    }else{
+     uint32_t * pte = malloc(sizeof(uint32_t));
+     int pgn = PAGING_PGN(addr);
+     init_pte(pte,1,0,0,1,0,frames->fpn);
+     caller->mm->pgd[pgn] = *pte;
+     enlist_pgn_node(&caller->mm->fifo_pgn, pgn);
+    }
+     
    /* Tracking for later page replacement activities (if needed)
     * Enqueue new usage page */
   
@@ -113,25 +113,20 @@ int swap_out_pages(struct pcb_t *caller, // process call
                                int pgnum, // num of mapping page
            struct framephy_struct *frames// list of the mapped frames
            )
-{
-    int pgit;
-    struct framephy_struct * fpit;
-    
+{   
     if(frames == NULL){
       return -1;
     }
-    for(pgit = 0 , fpit = frames; pgit < pgnum && fpit != NULL ; pgit++ , fpit = fpit->fp_next){
       int pgn = -1;
       struct framephy_struct * freeframe = malloc(sizeof(struct framephy_struct));
       find_victim_page(caller->mm,&pgn);
-      __swap_cp_page( caller->mram,PAGING_FPN_PRESENT(caller->mm->pgd[pgn]),caller->active_mswp,fpit->fpn);
+      __swap_cp_page( caller->mram,PAGING_FPN_PRESENT(caller->mm->pgd[pgn]),caller->active_mswp,frames->fpn);
       freeframe->fpn = PAGING_FPN_PRESENT(caller->mm->pgd[pgn]);
-      pte_set_swap(&caller->mm->pgd[pgn],0,fpit->fpn);
+      pte_set_swap(&(caller->mm->pgd[pgn]),0,frames->fpn);
       freeframe->owner = caller->mm;
       freeframe->fp_next = caller->mram->free_fp_list;
       caller->mram->free_fp_list =  freeframe;
-    }
-    return 0;
+      return 0;
 }
 /* 
  * alloc_pages_range - allocate req_pgnum of frame in ram
@@ -140,61 +135,33 @@ int swap_out_pages(struct pcb_t *caller, // process call
  * @frm_lst   : frame list
  */
 
-int alloc_pages_range(struct pcb_t *caller, int req_pgnum, struct framephy_struct** frm_lst)
+int alloc_pages_range(struct pcb_t *caller, int req_pgnum, struct framephy_struct** alloc_frame)
 {
-  int pgit, fpn;
-
-  for(pgit = 0; pgit < req_pgnum; pgit++)
-  {
-    fpn = -1;
-    if(MEMPHY_get_freefp(caller->mram, &fpn) == 0){
-      if(frm_lst == NULL){
-         (*frm_lst) = malloc(sizeof(struct framephy_struct));
-         (*frm_lst)->fpn = fpn;
-         (*frm_lst)->fp_next = NULL;
-         (*frm_lst)->owner = caller->mm;
-      }else{
-         struct framephy_struct * frame = malloc(sizeof(struct framephy_struct));
-         frame->fpn = fpn;
-         frame->owner =  caller->mm;
-         frame->fp_next = (*frm_lst);
-         (*frm_lst) = frame;
-      }
-    } else {  // ERROR CODE of obtaining somes but not enough frames
-       return -1;
-    }   
- }
+  int fpn;
+  if(MEMPHY_get_freefp(caller->mram, &fpn) == -1){
+      return -1;
+  }
+  (*alloc_frame) = malloc(sizeof(struct framephy_struct));
+  (*alloc_frame)->fpn = fpn;
+  (*alloc_frame)->owner = caller->mm;
+  (*alloc_frame)->fp_next= NULL;
   return 0;
 }
 
-int alloc_swap_pages(struct pcb_t * caller, int req_pgnum, struct framephy_struct** frm_lst){
+int alloc_swap_pages(struct pcb_t * caller, int req_pgnum, struct framephy_struct** alloc_frame){
   /*
      Get frame from swap space
      swap victim pages out RAM
      swap allocated pages in RAM
   */
-  int pgit, offset;
-
-  for(pgit = 0; pgit < req_pgnum; pgit++)
-  {
-    offset = -1;
-    if(MEMPHY_get_swap_page(caller->active_mswp, &offset) == 0){
-      if(frm_lst == NULL){
-         (*frm_lst) = malloc(sizeof(struct framephy_struct));
-         (*frm_lst)->fpn = offset;
-         (*frm_lst)->fp_next = NULL;
-         (*frm_lst)->owner = caller->mm;
-      }else{
-         struct framephy_struct * frame = malloc(sizeof(struct framephy_struct));
-         frame->fpn = offset;
-         frame->owner =  caller->mm;
-         frame->fp_next = (*frm_lst);
-         (*frm_lst) = frame;
-      }
-    } else {  // ERROR CODE of obtaining somes but not enough frames
-       return -1;
-    }   
- }
+  int offset;
+  if(MEMPHY_get_swap_page(caller->active_mswp,&offset) == -1){
+    return -1;
+  }
+  (*alloc_frame) = malloc(sizeof(struct framephy_struct));
+  (*alloc_frame)->fpn = offset;
+  (*alloc_frame)->owner = caller->mm;
+  (*alloc_frame)->fp_next= NULL;
   return 0;
 }
 /* 
@@ -208,8 +175,6 @@ int alloc_swap_pages(struct pcb_t * caller, int req_pgnum, struct framephy_struc
  */
 int vm_map_ram(struct pcb_t *caller, int astart, int aend, int mapstart, int incpgnum, struct vm_rg_struct *ret_rg)
 {
-  struct framephy_struct *frm_lst = NULL;
-
   /*@bksysnet: author provides a feasible solution of getting frames
    *FATAL logic in here, wrong behaviour if we have not enough page
    *i.e. we request 1000 frames meanwhile our RAM has size of 3 frames
@@ -217,15 +182,34 @@ int vm_map_ram(struct pcb_t *caller, int astart, int aend, int mapstart, int inc
    *in endless procedure of swap-off to get frame and we have not provide 
    *duplicate control mechanism, keep it simple
    */
-  if(alloc_pages_range(caller, incpgnum, &frm_lst) == 0){
-     vmap_page_range(caller, mapstart, incpgnum, frm_lst, ret_rg);
-  }else if(alloc_swap_pages(caller,incpgnum, &frm_lst) == 0){
-     swap_out_pages(caller, incpgnum, frm_lst);
-     vm_map_ram(caller,astart,aend,mapstart,incpgnum,ret_rg);
-  }else{
-    printf("OOM: vm_map_ram out of memory \n");
-    return -1;
+  for(int i = 0 ; i < incpgnum; i++, mapstart+= PAGING_PAGESZ){
+      struct framephy_struct * alloc_frame = NULL;
+      struct framephy_struct * swap_frame = NULL;
+      if(alloc_pages_range(caller, incpgnum, &alloc_frame) == 0){
+         vmap_page_range(caller, mapstart,incpgnum,0, alloc_frame, ret_rg);
+      }else if(alloc_swap_pages(caller,incpgnum, &swap_frame) == 0){
+         vmap_page_range(caller, mapstart,incpgnum,1,swap_frame, ret_rg);
+      }else{
+         printf("OOM: vm_map_ram out of memory \n");
+         return -1;
+      }
   }
+
+
+  // if(incpgnum <= mram_align_size/PAGING_PAGESZ){
+  //    if(alloc_pages_range(caller, incpgnum, &frm_lst) == 0 && frm_lst != NULL){
+  //      vmap_page_range(caller, mapstart,incpgnum, frm_lst, ret_rg);
+  //   }else if(alloc_swap_pages(caller,incpgnum, &frm_lst) == 0){
+  //       swap_out_pages(caller, incpgnum, frm_lst);
+  //       vm_map_ram(caller,astart,aend,mapstart,incpgnum,ret_rg);
+  //   }else{
+  //       printf("OOM: vm_map_ram out of memory \n");
+  //       return -1;
+  //   }
+  // }else{
+  //    return -1;
+  // }
+  
   /* Out of memory */
 //   if (ret_alloc == -3000) 
 //   {

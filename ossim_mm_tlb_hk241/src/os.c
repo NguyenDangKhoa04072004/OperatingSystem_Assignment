@@ -95,7 +95,10 @@ static void * cpu_routine(void * args) {
 		}
 		
 		/* Run current process */
-		run(proc);
+		if (run(proc) == -1){
+			detach_event(timer_id);
+			pthread_exit(NULL);
+		}
 		time_left--;
 		next_slot(timer_id);
 	}

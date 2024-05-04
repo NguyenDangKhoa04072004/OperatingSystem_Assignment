@@ -110,7 +110,9 @@ int __alloc(struct pcb_t *caller, int vmaid, int rgid, int size, int *alloc_addr
   /* TODO INCREASE THE LIMIT
    * inc_vma_limit(caller, vmaid, inc_sz)
    */
-  inc_vma_limit(caller, vmaid, size, rgid);
+  if(inc_vma_limit(caller, vmaid, size, rgid) == -1){
+    return -1;
+  }
 
   /*Successful increase limit */
   cur_vma->sbrk = old_sbrk + size;
@@ -286,7 +288,10 @@ int __read(struct pcb_t *caller, int vmaid, int rgid, int offset, BYTE *data)
 
   if(currg == NULL || cur_vma == NULL) /* Invalid memory identify */
 	  return -1;
-
+  if(currg->rg_start + offset >= currg->rg_start + currg->rg_end){
+    printf("Out-of-bounds memory access\n");
+    return -1;
+  }
   pg_getval(caller->mm, currg->rg_start + offset, data, caller);
 
   return 0;
@@ -304,9 +309,12 @@ int pgread(
     printf("Segmentation Fault !!\n");
     return -1;
   }
+  
   BYTE data;
   int val = __read(proc, 0, source, offset, &data);
-
+  if(val < 0){
+    return val;
+  }
   proc->regs[destination] = (uint32_t) data;
 #ifdef IODUMP
   printf("read region=%d offset=%d value=%d\n", source, offset, data);
@@ -335,7 +343,10 @@ int __write(struct pcb_t *caller, int vmaid, int rgid, int offset, BYTE value)
   
   if(currg == NULL || cur_vma == NULL) /* Invalid memory identify */
 	  return -1;
-
+  if(currg->rg_start + offset >= currg->rg_start + currg->rg_end){
+    printf("Out-of-bounds memory access\n");
+    return -1;
+  }
   pg_setval(caller->mm, currg->rg_start + offset, value, caller);
 
   return 0;
@@ -352,6 +363,10 @@ int pgwrite(
     printf("Segmentation Fault !!\n");
     return -1;
   }
+  int val = __write(proc, 0, destination, offset, data);
+  if(val < 0){
+    return val;
+  }
 #ifdef IODUMP
   printf("write region=%d offset=%d value=%d\n", destination, offset, data);
 #ifdef PAGETBL_DUMP
@@ -360,7 +375,7 @@ int pgwrite(
   MEMPHY_dump(proc->mram);
 #endif
 
-  return __write(proc, 0, destination, offset, data);
+  return val;
 }
 
 
