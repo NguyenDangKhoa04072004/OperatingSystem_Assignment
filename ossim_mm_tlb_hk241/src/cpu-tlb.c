@@ -142,9 +142,8 @@ int tlbwrite(struct pcb_t * proc, BYTE data,
 #endif
   MEMPHY_dump(proc->mram);
 #endif
-
+  print_pgtbl(proc, 0, -1);
   val = __write(proc, 0, destination, offset, data);
-
   /* TODO update TLB CACHED with frame num of recent accessing page(s)*/
   /* by using tlb_cache_read()/tlb_cache_write()*/
 

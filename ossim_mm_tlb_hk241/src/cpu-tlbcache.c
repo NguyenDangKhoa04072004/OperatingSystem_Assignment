@@ -21,6 +21,7 @@
 #include <stdlib.h>
 #include <pthread.h>
 #define init_tlbcache(mp,sz,...) init_memphy(mp, sz, (1, ##__VA_ARGS__))
+pthread_mutex_t entry_lock = PTHREAD_MUTEX_INITIALIZER;;
 pthread_mutex_t cache_lock = PTHREAD_MUTEX_INITIALIZER;
 /*
  *  tlb_cache_read read TLB cache device
@@ -37,11 +38,11 @@ static struct cache_entry{
 int insert_cache_entry(struct pcb_t * proc,  int pgnum){
    int index = pgnum % MAX_CACHE_INDEX;
    int tag = pgnum / MAX_CACHE_INDEX;
-   pthread_mutex_lock(&cache_lock);
+   pthread_mutex_lock(&entry_lock);
    tlb_cache[index].valid = 1;
    tlb_cache[index].pid = proc->pid;
    tlb_cache->tag = tag;
-   pthread_mutex_unlock(&cache_lock);
+   pthread_mutex_unlock(&entry_lock);
    return 0;
 }
 int tlb_cache_read(struct pcb_t * proc, int pgnum, int offset, BYTE * value)
@@ -75,14 +76,12 @@ int tlb_cache_write(struct pcb_t * proc,  int pgnum, int offset, BYTE value)
     */
    int index = pgnum % MAX_CACHE_INDEX;
    int tag = pgnum / MAX_CACHE_INDEX;
-   pthread_mutex_lock(&cache_lock);
    if(tlb_cache[index].valid == 1 && tlb_cache[index].pid == proc->pid && tlb_cache[index].tag == tag){
       int addr = pgnum * PAGING_PAGESZ + offset;
       TLBMEMPHY_write(proc->tlb,addr,value);
       _cache_page(proc->tlb,pgnum,proc->mram,PAGING_FPN_PRESENT(proc->mm->pgd[pgnum]));
       return 0;
    }
-   pthread_mutex_unlock(&cache_lock);
    return -1;
 }
 
