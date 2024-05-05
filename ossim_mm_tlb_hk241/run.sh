@@ -2,4 +2,4 @@
 make clean
 make all
 clear
-./os os_1_mlq_paging_small_4K
+./os os_0_paging

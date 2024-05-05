@@ -254,6 +254,21 @@ int __swap_cp_page(struct memphy_struct *mpsrc, int srcfpn,
   return 0;
 }
 
+int _cache_page(struct memphy_struct *mpsrc, int srcfpn,
+                struct memphy_struct *mpdst, int dstfpn){
+  int cellidx;
+  int addrsrc,addrdst;
+  for(cellidx = 0; cellidx < PAGING_PAGESZ; cellidx++)
+  {
+    addrsrc = srcfpn * PAGING_PAGESZ + cellidx;
+    addrdst = dstfpn * PAGING_PAGESZ + cellidx;
+
+    BYTE data;
+    MEMPHY_read(mpsrc, addrsrc, &data);
+    MEMPHY_write(mpdst, addrdst, data);
+  }
+  return 0;
+}
 /*
  *Initialize a empty Memory Management instance
  * @mm:     self mm
