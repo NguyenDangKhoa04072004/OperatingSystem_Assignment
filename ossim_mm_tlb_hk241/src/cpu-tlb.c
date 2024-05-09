@@ -43,7 +43,7 @@ int tlballoc(struct pcb_t *proc, uint32_t size, uint32_t reg_index)
 
   /* By default using vmaid = 0 */
   val = __alloc(proc, 0, reg_index, size, &addr);
-  
+  print_pgtbl(proc, 0, -1);
   /* TODO update TLB CACHED frame num of the new allocated page(s)*/
   /* by using tlb_cache_read()/tlb_cache_write()*/
   return val;
@@ -97,8 +97,11 @@ int tlbread(struct pcb_t * proc, uint32_t source,
 #endif
   MEMPHY_dump(proc->mram);
 #endif
-
+  
   int val = __read(proc, 0, source, offset, &data);
+  if(val == -1){
+    return -1;
+  }
   printf("read region=%d offset=%d value=%d\n", source, offset, data);
   print_pgtbl(proc, 0, -1); 
   proc->regs[destination] = (uint32_t) data;
@@ -142,8 +145,12 @@ int tlbwrite(struct pcb_t * proc, BYTE data,
 #endif
   MEMPHY_dump(proc->mram);
 #endif
-  print_pgtbl(proc, 0, -1);
   val = __write(proc, 0, destination, offset, data);
+  if(val==-1){
+    return -1;
+  }
+  printf("write region=%d offset=%d value=%d\n", destination, offset, data);
+  print_pgtbl(proc, 0, -1);
   /* TODO update TLB CACHED with frame num of recent accessing page(s)*/
   /* by using tlb_cache_read()/tlb_cache_write()*/
 
